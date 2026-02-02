@@ -11,7 +11,6 @@ import (
 
 	"github.com/rs/zerolog"
 	tele "gopkg.in/telebot.v3"
-	"gopkg.in/telebot.v3/middleware"
 )
 
 const MaxMessageSize = 4096
@@ -51,11 +50,17 @@ func NewApp(config *types.Config, version string) *App {
 
 	if len(config.Telegram.Admins) > 0 {
 		logger.Debug().Msg("Using admins whitelist")
-		bot.Use(middleware.Restrict(middleware.RestrictConfig{
-			Chats: config.Telegram.Admins,
-			In:    nil,
-			Out:   app.HandleUnauthorized,
-		}))
+
+		bot.Use(func(next tele.HandlerFunc) tele.HandlerFunc {
+			return func(c tele.Context) error {
+				for _, chat := range config.Telegram.Admins {
+					if chat == c.Sender().ID {
+						return next(c)
+					}
+				}
+				return app.HandleUnauthorized(c)
+			}
+		})
 	}
 
 	return app

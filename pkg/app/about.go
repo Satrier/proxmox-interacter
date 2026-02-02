@@ -11,7 +11,7 @@ func (a *App) HandleAbout(c tele.Context) error {
 		Int64("sender_id", c.Sender().ID).
 		Str("sender", c.Sender().Username).
 		Str("text", c.Text()).
-		Msg("Got info query")
+		Msg("Got about query")
 
 	template, err := a.TemplateManager.Render("about", a.Version)
 	if err != nil {
