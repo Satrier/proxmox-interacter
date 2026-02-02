@@ -1,0 +1,23 @@
+package app
+
+import (
+	"fmt"
+
+	tele "gopkg.in/telebot.v3"
+)
+
+func (a *App) HandleInfo(c tele.Context) error {
+	a.Logger.Info().
+		Int64("sender_id", c.Sender().ID).
+		Str("sender", c.Sender().Username).
+		Str("text", c.Text()).
+		Msg("Got info query")
+
+	template, err := a.TemplateManager.Render("info", a.Version)
+	if err != nil {
+		a.Logger.Error().Err(err).Msg("Error rendering info template")
+		return c.Reply(fmt.Sprintf("Error rendering template: %s", err))
+	}
+
+	return a.BotReply(c, template)
+}
