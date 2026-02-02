@@ -72,7 +72,7 @@ func (a *App) Start() {
 	a.Bot.Handle("/scale", a.HandleContainerScale)
 	a.Bot.Handle("/disks", a.HandleListDisks)
 	a.Bot.Handle("/help", a.HandleHelp)
-	a.Bot.Handle("/info", a.HandleInfo)
+	a.Bot.Handle("/about", a.HandleInfo)
 
 	a.Bot.Handle(tele.OnCallback, a.HandleCallback)
 
