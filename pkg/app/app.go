@@ -1,6 +1,7 @@
 package app
 
 import (
+	"fmt"
 	loggerPkg "main/pkg/logger"
 	"main/pkg/proxmox"
 	"main/pkg/templates"
@@ -86,7 +87,13 @@ func (a *App) HandleUnauthorized(c tele.Context) error {
 		Str("text", c.Text()).
 		Msg("Unauthorized user, add sender_id to admins in config")
 
-	return nil
+	template, err := a.TemplateManager.Render("unauthorized", c.Sender())
+	if err != nil {
+		a.Logger.Error().Err(err).Msg("Error rendering unauthorized template")
+		return c.Reply(fmt.Sprintf("Error rendering template: %s", err))
+	}
+
+	return a.BotReply(c, template)
 }
 
 func (a *App) HandleCallback(c tele.Context) error {
