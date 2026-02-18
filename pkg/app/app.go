@@ -8,12 +8,14 @@ import (
 	"main/pkg/types"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/rs/zerolog"
 	tele "gopkg.in/telebot.v3"
 )
 
-const MaxMessageSize = 4096
+// Telegram hard limit is 4096 chars. Keep some headroom.
+const MaxMessageSize = 4000
 
 type App struct {
 	Config          types.Config
@@ -121,7 +123,6 @@ func (a *App) HandleCallback(c tele.Context) error {
 	for prefix, botCallback := range callbacks {
 		if strings.HasPrefix(unique, prefix) {
 			suffix, _ := strings.CutPrefix(unique, prefix)
-
 			return botCallback(c, suffix)
 		}
 	}
@@ -129,51 +130,63 @@ func (a *App) HandleCallback(c tele.Context) error {
 	return nil
 }
 
+// BotReply sends msg split into multiple Telegram messages without exceeding the limit.
+// It is safe for UTF-8 text and for the extra newline we append.
 func (a *App) BotReply(c tele.Context, msg string, opts ...interface{}) error {
-	msgsByNewline := strings.Split(msg, "\n")
+	opts = append(opts, tele.ModeHTML)
 
+	lines := strings.Split(msg, "\n")
 	var sb strings.Builder
-	// Use a "soft" limit, smaller than 4096, to avoid breaking tags and have a buffer
-	const softLimit = 3500
 
-	for _, line := range msgsByNewline {
-		// If adding a new line exceeds the limit
-		if sb.Len()+len(line)+1 > softLimit {
-			// Send accumulated message only if buffer is not empty
-			if sb.Len() > 0 {
-				if err := c.Reply(sb.String(), tele.ModeHTML); err != nil {
-					a.Logger.Error().Err(err).Msg("Could not send Telegram message chunk")
-					return err
-				}
-
-				sb.Reset()
-				// IMPORTANT: Small pause to prevent Telegram from blocking due to flooding (429 Too Many Requests)
-				time.Sleep(500 * time.Millisecond)
-			}
+	flush := func() error {
+		if sb.Len() == 0 {
+			return nil
 		}
-
-		sb.WriteString(line + "\n")
-	}
-
-	// Send the remainder
-	if sb.Len() > 0 {
-		// Check if ModeHTML is already in options, if not - add it
-		hasModeHTML := false
-		for _, opt := range opts {
-			if opt == tele.ModeHTML {
-				hasModeHTML = true
-				break
-			}
-		}
-		if !hasModeHTML {
-			opts = append(opts, tele.ModeHTML)
-		}
-
 		if err := c.Reply(sb.String(), opts...); err != nil {
-			a.Logger.Error().Err(err).Msg("Could not send final Telegram message")
+			a.Logger.Error().Err(err).Msg("Could not send Telegram message")
 			return err
 		}
+		sb.Reset()
+		return nil
 	}
 
-	return nil
+	curRunes := func() int {
+		// strings.Builder has no direct RuneCount; this is safe and simple.
+		return utf8.RuneCountInString(sb.String())
+	}
+
+	for _, line := range lines {
+		// +1 for the newline we add.
+		lineRunes := utf8.RuneCountInString(line) + 1
+
+		// If next line would overflow, flush current buffer first.
+		if curRunes()+lineRunes > MaxMessageSize {
+			if err := flush(); err != nil {
+				return err
+			}
+		}
+
+		// If a single line is longer than the limit, split it safely.
+		if lineRunes > MaxMessageSize {
+			runes := []rune(line)
+			for start := 0; start < len(runes); {
+				end := start + (MaxMessageSize - 1) // keep room for newline
+				if end > len(runes) {
+					end = len(runes)
+				}
+				sb.WriteString(string(runes[start:end]))
+				sb.WriteString("\n")
+				if err := flush(); err != nil {
+					return err
+				}
+				start = end
+			}
+			continue
+		}
+
+		sb.WriteString(line)
+		sb.WriteString("\n")
+	}
+
+	return flush()
 }
