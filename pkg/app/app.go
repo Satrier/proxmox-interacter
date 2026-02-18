@@ -13,7 +13,7 @@ import (
 	tele "gopkg.in/telebot.v3"
 )
 
-const MaxMessageSize = 4096
+const MaxMessageSize = 4000
 
 type App struct {
 	Config          types.Config
