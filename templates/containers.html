@@ -8,9 +8,9 @@ Got error: {{ $cluster.Error }}
 No nodes present
 {{- end }}
 {{- range $node := $cluster.Nodes }}
-{{ SerializeLink $node.Node.Link }}:
+{{ $node.Node.Name }}:
 {{- range $container := $node.Containers }}
-- {{ $container.GetEmoji }} {{ SerializeLink $container.Link }}
+- {{ $container.GetEmoji }} {{ $container.Name }}
 {{- end }}
 {{ end }}
 {{ end }}
