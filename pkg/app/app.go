@@ -39,6 +39,12 @@ func (a App) botRun() {
 	}
 
 	for update := range updates {
+		for _, adminID := range a.Config.Telegram.Admins {
+			if update.Message.Chat.ID == adminID {
+				continue
+			}
+		}
+
 		if update.Message != nil {
 			a.Logger.Info().Msg(update.Message.Text)
 			parts := strings.SplitN(update.Message.Text, "@", 2)
