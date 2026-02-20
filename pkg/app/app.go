@@ -41,86 +41,87 @@ func (a App) botRun() {
 	for update := range updates {
 		for _, adminID := range a.Config.Telegram.Admins {
 			if update.Message.Chat.ID == adminID {
-				continue
-			}
-		}
 
-		if update.Message != nil {
-			a.Logger.Info().Msg(update.Message.Text)
-			parts := strings.SplitN(update.Message.Text, "@", 2)
+				if update.Message != nil {
+					a.Logger.Info().Msg(update.Message.Text)
+					parts := strings.SplitN(update.Message.Text, "@", 2)
 
-			if parts[0] == "/start" {
-				a.sendMainMenu(bot, update.Message.Chat.ID)
-			}
-			if parts[0] == "/containers" {
-				err := a.HandleListContainers(bot, update.Message.Chat.ID)
-				if err != nil {
-					a.Logger.Info().Err(err).Msg("Failed to handle list containers")
-				}
-			}
-		}
-
-		if update.CallbackQuery != nil {
-			a.Logger.Info().Msg(update.CallbackQuery.Data)
-			data := update.CallbackQuery.Data
-
-			switch data {
-
-			case "/containers":
-				err := a.HandleListContainers(bot, update.CallbackQuery.Message.Chat.ID)
-				if err != nil {
-					a.Logger.Info().Err(err).Msg("Failed to handle list containers")
-				}
-
-			default:
-				a.Logger.Info().Msg(update.CallbackQuery.Data)
-				parts := strings.SplitN(data, ":", 2)
-
-				if len(parts) == 2 {
-					action := parts[0]
-					value := parts[1]
-
-					if action == "start" || action == "stop" || action == "restart" {
-						a.allowDoRun(data, bot, update.CallbackQuery.Message.Chat.ID)
+					if parts[0] == "/start" {
+						a.sendMainMenu(bot, update.Message.Chat.ID)
 					}
-
-					if action == "allowstart" || action == "allowstop" || action == "allowrestart" {
-						a.HandleDoContainerAction(value)
-
-						parts := strings.SplitN(value, ":", 2)
-
-						msg := tgbotapi.NewMessage(update.CallbackQuery.Message.Chat.ID, fmt.Sprintf("*%s %s*", parts[0], escapeMDV2(parts[1])))
-						msg.ParseMode = "MarkdownV2"
-
-						_, err := bot.Send(msg)
+					if parts[0] == "/containers" {
+						err := a.HandleListContainers(bot, update.Message.Chat.ID)
 						if err != nil {
-							a.Logger.Error().Err(err).Msg("Error sending message")
+							a.Logger.Info().Err(err).Msg("Failed to handle list containers")
+						}
+					}
+				}
+
+				if update.CallbackQuery != nil {
+					a.Logger.Info().Msg(update.CallbackQuery.Data)
+					data := update.CallbackQuery.Data
+
+					switch data {
+
+					case "/containers":
+						err := a.HandleListContainers(bot, update.CallbackQuery.Message.Chat.ID)
+						if err != nil {
+							a.Logger.Info().Err(err).Msg("Failed to handle list containers")
 						}
 
-						a.sendMainMenu(bot, update.CallbackQuery.Message.Chat.ID)
+					default:
+						a.Logger.Info().Msg(update.CallbackQuery.Data)
+						parts := strings.SplitN(data, ":", 2)
+
+						if len(parts) == 2 {
+							action := parts[0]
+							value := parts[1]
+
+							if action == "start" || action == "stop" || action == "restart" {
+								a.allowDoRun(data, bot, update.CallbackQuery.Message.Chat.ID)
+							}
+
+							if action == "allowstart" || action == "allowstop" || action == "allowrestart" {
+								a.HandleDoContainerAction(value)
+
+								parts := strings.SplitN(value, ":", 2)
+
+								msg := tgbotapi.NewMessage(update.CallbackQuery.Message.Chat.ID, fmt.Sprintf("*%s %s*", parts[0], escapeMDV2(parts[1])))
+								msg.ParseMode = "MarkdownV2"
+
+								_, err := bot.Send(msg)
+								if err != nil {
+									a.Logger.Error().Err(err).Msg("Error sending message")
+								}
+
+								a.sendMainMenu(bot, update.CallbackQuery.Message.Chat.ID)
+							}
+
+							if action == "cancelstop" || action == "cancelstart" {
+								parts := strings.SplitN(value, ":", 2)
+
+								msg := tgbotapi.NewMessage(update.CallbackQuery.Message.Chat.ID, fmt.Sprintf("*cancel action for %s*", escapeMDV2(parts[1])))
+								msg.ParseMode = "MarkdownV2"
+
+								_, err := bot.Send(msg)
+								if err != nil {
+									a.Logger.Error().Err(err).Msg("Error sending message")
+								}
+
+								a.sendMainMenu(bot, update.CallbackQuery.Message.Chat.ID)
+							}
+						}
 					}
 
-					if action == "cancelstop" || action == "cancelstart" {
-						parts := strings.SplitN(value, ":", 2)
-
-						msg := tgbotapi.NewMessage(update.CallbackQuery.Message.Chat.ID, fmt.Sprintf("*cancel action for %s*", escapeMDV2(parts[1])))
-						msg.ParseMode = "MarkdownV2"
-
-						_, err := bot.Send(msg)
-						if err != nil {
-							a.Logger.Error().Err(err).Msg("Error sending message")
-						}
-
-						a.sendMainMenu(bot, update.CallbackQuery.Message.Chat.ID)
+					callback := tgbotapi.NewCallback(update.CallbackQuery.ID, "")
+					if _, err := bot.AnswerCallbackQuery(callback); err != nil {
+						a.Logger.Error().Err(err).Msg("callback error")
 					}
 				}
 			}
-
-			callback := tgbotapi.NewCallback(update.CallbackQuery.ID, "")
-			if _, err := bot.AnswerCallbackQuery(callback); err != nil {
-				a.Logger.Error().Err(err).Msg("callback error")
-			}
 		}
+		a.Logger.Info().Msg("Bad ID tried to access the bot")
+		continue
 	}
 }
 
@@ -140,6 +141,11 @@ func NewApp(config *types.Config, version string) *App {
 		TemplateManager: templateManager,
 		Bot:             bot,
 		Version:         version,
+		Config: types.Config{
+			Telegram: types.TelegramConfig{
+				Admins: config.Telegram.Admins,
+			},
+		},
 	}
 
 	if len(config.Telegram.Admins) > 0 {
