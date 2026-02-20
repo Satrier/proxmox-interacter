@@ -3,26 +3,39 @@ package app
 import (
 	"fmt"
 
-	tele "gopkg.in/telebot.v3"
+	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api"
 )
 
-func (a *App) HandleListContainers(c tele.Context) error {
-	a.Logger.Info().
-		Int64("sender_id", c.Sender().ID).
-		Str("sender", c.Sender().Username).
-		Str("text", c.Text()).
-		Msg("Got list containers query")
-
+func (a *App) HandleListContainers(bot *tgbotapi.BotAPI, chatID int64) error {
 	clusters, err := a.ProxmoxManager.GetNodes()
 	if err != nil {
-		return a.BotReply(c, fmt.Sprintf("Error fetching nodes: %s", err))
+		return fmt.Errorf("Error fetching nodes: %s", err)
 	}
 
-	template, err := a.TemplateManager.Render("containers", clusters)
-	if err != nil {
-		a.Logger.Error().Err(err).Msg("Error rendering containers template")
-		return c.Reply(fmt.Sprintf("Error rendering template: %s", err))
+	for _, cluster := range clusters {
+		rows := [][]tgbotapi.InlineKeyboardButton{}
+
+		for _, node := range cluster.Nodes {
+			for _, container := range node.Containers {
+				if container.Status == "running" {
+					btn := tgbotapi.NewInlineKeyboardButtonData("🟢 "+container.Name, "stop"+":"+container.Name)
+					rows = append(rows, tgbotapi.NewInlineKeyboardRow(btn))
+				}
+				if container.Status == "stopped" {
+					btn := tgbotapi.NewInlineKeyboardButtonData("⚪ "+container.Name, "start"+":"+container.Name)
+					rows = append(rows, tgbotapi.NewInlineKeyboardRow(btn))
+				}
+			}
+		}
+		msg := tgbotapi.NewMessage(chatID, fmt.Sprintf("🖥️ *%s*", escapeMDV2(cluster.Name)))
+		msg.ReplyMarkup = tgbotapi.NewInlineKeyboardMarkup(rows...)
+		msg.ParseMode = "MarkdownV2"
+
+		_, err = bot.Send(msg)
+		if err != nil {
+			a.Logger.Error().Err(err).Msg("Error sending message")
+		}
 	}
 
-	return a.BotReply(c, template)
+	return nil
 }

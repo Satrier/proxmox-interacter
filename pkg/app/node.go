@@ -1,41 +1,34 @@
 package app
 
-import (
-	"fmt"
-	"strings"
+// func (a *App) HandleNodeInfo(c tele.Context) error {
+// 	a.Logger.Info().
+// 		Int64("sender_id", c.Sender().ID).
+// 		Str("sender", c.Sender().Username).
+// 		Str("text", c.Text()).
+// 		Msg("Got node info query")
 
-	tele "gopkg.in/telebot.v3"
-)
+// 	args := strings.SplitN(c.Text(), " ", 2)
+// 	command, args := args[0], args[1:]
 
-func (a *App) HandleNodeInfo(c tele.Context) error {
-	a.Logger.Info().
-		Int64("sender_id", c.Sender().ID).
-		Str("sender", c.Sender().Username).
-		Str("text", c.Text()).
-		Msg("Got node info query")
+// 	if len(args) != 1 {
+// 		return c.Reply(fmt.Sprintf("Usage: %s <node name>", command))
+// 	}
 
-	args := strings.SplitN(c.Text(), " ", 2)
-	command, args := args[0], args[1:]
+// 	clusters, err := a.ProxmoxManager.GetNodes()
+// 	if err != nil {
+// 		return a.BotReply(c, fmt.Sprintf("Error fetching nodes: %s", err))
+// 	}
 
-	if len(args) != 1 {
-		return c.Reply(fmt.Sprintf("Usage: %s <node name>", command))
-	}
+// 	node, err := clusters.FindNode(args[0])
+// 	if err != nil {
+// 		return a.BotReply(c, fmt.Sprintf("Error finding node: %s\n", err))
+// 	}
 
-	clusters, err := a.ProxmoxManager.GetNodes()
-	if err != nil {
-		return a.BotReply(c, fmt.Sprintf("Error fetching nodes: %s", err))
-	}
+// 	template, err := a.TemplateManager.Render("node", node)
+// 	if err != nil {
+// 		a.Logger.Error().Err(err).Msg("Error rendering node template")
+// 		return c.Reply(fmt.Sprintf("Error rendering template: %s", err))
+// 	}
 
-	node, err := clusters.FindNode(args[0])
-	if err != nil {
-		return a.BotReply(c, fmt.Sprintf("Error finding node: %s\n", err))
-	}
-
-	template, err := a.TemplateManager.Render("node", node)
-	if err != nil {
-		a.Logger.Error().Err(err).Msg("Error rendering node template")
-		return c.Reply(fmt.Sprintf("Error rendering template: %s", err))
-	}
-
-	return a.BotReply(c, template)
-}
+// 	return a.BotReply(c, template)
+// }

@@ -3,8 +3,6 @@ package app
 import (
 	"fmt"
 	"strings"
-
-	tele "gopkg.in/telebot.v3"
 )
 
 type containerAction struct {
@@ -47,134 +45,34 @@ func (a *App) getAction(action string) containerAction {
 	return actions[action]
 }
 
-func (a *App) HandleContainerAction(actionName string) func(c tele.Context) error {
-	action := a.getAction(actionName)
+func (a *App) HandleDoContainerAction(actionName string) error {
+	args := strings.SplitN(actionName, ":", 2)
+	action := a.getAction(args[0])
+	// data = args[1]
 
-	return func(c tele.Context) error {
-		a.Logger.Info().
-			Int64("sender_id", c.Sender().ID).
-			Str("sender", c.Sender().Username).
-			Str("text", c.Text()).
-			Str("action", action.action).
-			Msg("Got container action query")
-
-		args := strings.SplitN(c.Text(), " ", 2)
-		command, args := args[0], args[1:]
-
-		if len(args) != 1 {
-			return c.Reply(fmt.Sprintf("Usage: %s <container name or ID>", command))
-		}
-
-		clusters, err := a.ProxmoxManager.GetNodes()
-		if err != nil {
-			return a.BotReply(c, fmt.Sprintf("Error fetching nodes: %s", err))
-		}
-
-		container, _, err := clusters.FindContainer(args[0])
-		if err != nil {
-			template, err := a.TemplateManager.Render("container_error", ContainerErrorRender{
-				Error:        err,
-				ClusterInfos: clusters,
-			})
-			if err != nil {
-				a.Logger.Error().Err(err).Msg("Error rendering container template")
-				return c.Reply(fmt.Sprintf("Error rendering template when processing error: %s", err))
-			}
-
-			return a.BotReply(c, template)
-		}
-
-		template, err := a.TemplateManager.Render("container_action", ContainerActionRender{
-			Container: *container,
-			Action:    action.action,
-		})
-		if err != nil {
-			a.Logger.Error().Err(err).Msg("Error rendering container_action template")
-			return c.Reply(fmt.Sprintf("Error rendering template: %s", err))
-		}
-
-		menu := &tele.ReplyMarkup{ResizeKeyboard: true}
-
-		approveButton := menu.Data("✅Approve", fmt.Sprintf(
-			"%s%s",
-			action.actionPrefix,
-			args[0],
-		))
-		cancelButton := menu.Data("❌Cancel", action.cancelActionPrefix)
-
-		menu.Inline(
-			menu.Row(approveButton, cancelButton),
-		)
-
-		return a.BotReply(c, template, menu)
+	clusters, err := a.ProxmoxManager.GetNodes()
+	if err != nil {
+		a.Logger.Error().Err(err).Msg("Error fetching nodes")
 	}
-}
 
-func (a *App) HandleDoContainerAction(actionName string) func(c tele.Context, data string) error {
-	action := a.getAction(actionName)
+	container, _, err := clusters.FindContainer(args[1])
+	if err != nil {
 
-	return func(c tele.Context, data string) error {
-		clusters, err := a.ProxmoxManager.GetNodes()
 		if err != nil {
-			return a.BotReply(c, fmt.Sprintf("Error fetching nodes: %s", err))
+			a.Logger.Error().Err(err).Msg("Error rendering container template")
 		}
 
-		container, _, err := clusters.FindContainer(data)
-		if err != nil {
-			template, err := a.TemplateManager.Render("container_error", ContainerErrorRender{
-				Error:        err,
-				ClusterInfos: clusters,
-			})
-			if err != nil {
-				a.Logger.Error().Err(err).Msg("Error rendering container template")
-				return c.Reply(fmt.Sprintf("Error rendering template when processing error: %s", err))
-			}
-
-			return a.BotReply(c, template)
-		}
-
-		if container.IsRunning() && !action.shouldContainerBeStarted {
-			return c.Reply("Container is already running!")
-		} else if !container.IsRunning() && action.shouldContainerBeStarted {
-			return c.Reply("Container is not running!")
-		}
-
-		if err := action.function(data); err != nil {
-			return c.Reply(fmt.Sprintf("Error %s container: %s", action.doneAction, err))
-		}
-
-		if _, err := a.Bot.Edit(c.Message(), c.Message().Text, &tele.ReplyMarkup{}); err != nil {
-			a.Logger.Error().Err(err).Msg("Could not edit message!")
-		}
-
-		template, err := a.TemplateManager.Render("container_action_do", ContainerActionRender{
-			Container: *container,
-			Action:    action.doneAction,
-		})
-		if err != nil {
-			a.Logger.Error().Err(err).Msg("Error rendering container_action template")
-			return c.Reply(fmt.Sprintf("Error rendering template: %s", err))
-		}
-
-		if err := a.BotReply(c, template); err != nil {
-			a.Logger.Error().Err(err).Msg("Could not delete message!")
-		}
-
-		return a.Bot.Delete(c.Message())
 	}
-}
 
-func (a *App) HandleDoCancelContainerAction(actionName string) func(c tele.Context, data string) error {
-	action := a.getAction(actionName)
-
-	return func(c tele.Context, data string) error {
-		if _, err := a.Bot.Edit(c.Message(), c.Message().Text, &tele.ReplyMarkup{}); err != nil {
-			a.Logger.Error().Err(err).Msg("Could not edit message!")
-		}
-		return a.BotReply(c, fmt.Sprintf(
-			"%s%s is cancelled!",
-			strings.ToUpper(action.action[:1]),
-			action.action[1:],
-		))
+	if container.IsRunning() && !action.shouldContainerBeStarted {
+		a.Logger.Info().Msg("Container is already running!")
+	} else if !container.IsRunning() && action.shouldContainerBeStarted {
+		a.Logger.Info().Msg("Container is not running!")
 	}
+
+	if err := action.function(args[1]); err != nil {
+		a.Logger.Error().Err(err).Msg(fmt.Sprintf("Error %s container", action.doneAction))
+	}
+
+	return nil
 }

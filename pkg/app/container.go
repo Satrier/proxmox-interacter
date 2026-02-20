@@ -1,61 +1,54 @@
 package app
 
-import (
-	"fmt"
-	"strings"
+// func (a *App) HandleContainerInfo(c tele.Context) error {
+// 	a.Logger.Info().
+// 		Int64("sender_id", c.Sender().ID).
+// 		Str("sender", c.Sender().Username).
+// 		Str("text", c.Text()).
+// 		Msg("Got container info query")
 
-	tele "gopkg.in/telebot.v3"
-)
+// 	args := strings.SplitN(c.Text(), " ", 2)
+// 	command, args := args[0], args[1:]
 
-func (a *App) HandleContainerInfo(c tele.Context) error {
-	a.Logger.Info().
-		Int64("sender_id", c.Sender().ID).
-		Str("sender", c.Sender().Username).
-		Str("text", c.Text()).
-		Msg("Got container info query")
+// 	if len(args) != 1 {
+// 		return c.Reply(fmt.Sprintf("Usage: %s <container name or ID>", command))
+// 	}
 
-	args := strings.SplitN(c.Text(), " ", 2)
-	command, args := args[0], args[1:]
+// 	clusters, err := a.ProxmoxManager.GetNodes()
+// 	if err != nil {
+// 		return a.BotReply(c, fmt.Sprintf("Error fetching nodes: %s", err))
+// 	}
 
-	if len(args) != 1 {
-		return c.Reply(fmt.Sprintf("Usage: %s <container name or ID>", command))
-	}
+// 	container, cluster, err := clusters.FindContainer(args[0])
+// 	if err != nil {
+// 		template, err := a.TemplateManager.Render("container_error", ContainerErrorRender{
+// 			Error:        err,
+// 			ClusterInfos: clusters,
+// 		})
+// 		if err != nil {
+// 			a.Logger.Error().Err(err).Msg("Error rendering container template")
+// 			return c.Reply(fmt.Sprintf("Error rendering template when processing error: %s", err))
+// 		}
 
-	clusters, err := a.ProxmoxManager.GetNodes()
-	if err != nil {
-		return a.BotReply(c, fmt.Sprintf("Error fetching nodes: %s", err))
-	}
+// 		return a.BotReply(c, template)
+// 	}
 
-	container, cluster, err := clusters.FindContainer(args[0])
-	if err != nil {
-		template, err := a.TemplateManager.Render("container_error", ContainerErrorRender{
-			Error:        err,
-			ClusterInfos: clusters,
-		})
-		if err != nil {
-			a.Logger.Error().Err(err).Msg("Error rendering container template")
-			return c.Reply(fmt.Sprintf("Error rendering template when processing error: %s", err))
-		}
+// 	render := ContainerInfoRender{
+// 		Container: *container,
+// 	}
 
-		return a.BotReply(c, template)
-	}
+// 	if config, err := a.ProxmoxManager.GetContainerConfig(*container, cluster); err != nil {
+// 		a.Logger.Error().Err(err).Msg("Error fetching container config")
+// 		render.ConfigError = err
+// 	} else {
+// 		render.Config = config
+// 	}
 
-	render := ContainerInfoRender{
-		Container: *container,
-	}
+// 	template, err := a.TemplateManager.Render("container", render)
+// 	if err != nil {
+// 		a.Logger.Error().Err(err).Msg("Error rendering container template")
+// 		return c.Reply(fmt.Sprintf("Error rendering template: %s", err))
+// 	}
 
-	if config, err := a.ProxmoxManager.GetContainerConfig(*container, cluster); err != nil {
-		a.Logger.Error().Err(err).Msg("Error fetching container config")
-		render.ConfigError = err
-	} else {
-		render.Config = config
-	}
-
-	template, err := a.TemplateManager.Render("container", render)
-	if err != nil {
-		a.Logger.Error().Err(err).Msg("Error rendering container template")
-		return c.Reply(fmt.Sprintf("Error rendering template: %s", err))
-	}
-
-	return a.BotReply(c, template)
-}
+// 	return a.BotReply(c, template)
+// }
