@@ -25,103 +25,97 @@ type App struct {
 }
 
 func (a App) botRun() {
-	bot, err := tgbotapi.NewBotAPI(a.Bot.Token)
-	if err != nil {
-		a.Logger.Info().Err(err).Msg("Failed to create Telegram bot")
-	}
+	update := tgbotapi.NewUpdate(0)
+	update.Timeout = 60
 
-	u := tgbotapi.NewUpdate(0)
-	u.Timeout = 60
-
-	updates, err := bot.GetUpdatesChan(u)
+	updates, err := a.Bot.GetUpdatesChan(update)
 	if err != nil {
 		a.Logger.Info().Err(err).Msg("Failed to get Telegram updates")
 	}
 
 	for update := range updates {
-		for _, adminID := range a.Config.Telegram.Admins {
-			if update.Message.Chat.ID == adminID {
+		check := a.checkIdAdmin(update)
+		if !check {
+			a.Logger.Info().Msg("Unauthorized user tried to access the bot")
+			continue
+		}
 
-				if update.Message != nil {
-					a.Logger.Info().Msg(update.Message.Text)
-					parts := strings.SplitN(update.Message.Text, "@", 2)
+		if update.Message != nil {
+			a.Logger.Info().Msg(update.Message.Text)
+			parts := strings.SplitN(update.Message.Text, "@", 2)
 
-					if parts[0] == "/start" {
-						a.sendMainMenu(bot, update.Message.Chat.ID)
-					}
-					if parts[0] == "/containers" {
-						err := a.HandleListContainers(bot, update.Message.Chat.ID)
-						if err != nil {
-							a.Logger.Info().Err(err).Msg("Failed to handle list containers")
-						}
-					}
-				}
-
-				if update.CallbackQuery != nil {
-					a.Logger.Info().Msg(update.CallbackQuery.Data)
-					data := update.CallbackQuery.Data
-
-					switch data {
-
-					case "/containers":
-						err := a.HandleListContainers(bot, update.CallbackQuery.Message.Chat.ID)
-						if err != nil {
-							a.Logger.Info().Err(err).Msg("Failed to handle list containers")
-						}
-
-					default:
-						a.Logger.Info().Msg(update.CallbackQuery.Data)
-						parts := strings.SplitN(data, ":", 2)
-
-						if len(parts) == 2 {
-							action := parts[0]
-							value := parts[1]
-
-							if action == "start" || action == "stop" || action == "restart" {
-								a.allowDoRun(data, bot, update.CallbackQuery.Message.Chat.ID)
-							}
-
-							if action == "allowstart" || action == "allowstop" || action == "allowrestart" {
-								a.HandleDoContainerAction(value)
-
-								parts := strings.SplitN(value, ":", 2)
-
-								msg := tgbotapi.NewMessage(update.CallbackQuery.Message.Chat.ID, fmt.Sprintf("*%s %s*", parts[0], escapeMDV2(parts[1])))
-								msg.ParseMode = "MarkdownV2"
-
-								_, err := bot.Send(msg)
-								if err != nil {
-									a.Logger.Error().Err(err).Msg("Error sending message")
-								}
-
-								a.sendMainMenu(bot, update.CallbackQuery.Message.Chat.ID)
-							}
-
-							if action == "cancelstop" || action == "cancelstart" {
-								parts := strings.SplitN(value, ":", 2)
-
-								msg := tgbotapi.NewMessage(update.CallbackQuery.Message.Chat.ID, fmt.Sprintf("*cancel action for %s*", escapeMDV2(parts[1])))
-								msg.ParseMode = "MarkdownV2"
-
-								_, err := bot.Send(msg)
-								if err != nil {
-									a.Logger.Error().Err(err).Msg("Error sending message")
-								}
-
-								a.sendMainMenu(bot, update.CallbackQuery.Message.Chat.ID)
-							}
-						}
-					}
-
-					callback := tgbotapi.NewCallback(update.CallbackQuery.ID, "")
-					if _, err := bot.AnswerCallbackQuery(callback); err != nil {
-						a.Logger.Error().Err(err).Msg("callback error")
-					}
+			if parts[0] == "/start" {
+				a.sendMainMenu(a.Bot, update.Message.Chat.ID)
+			}
+			if parts[0] == "/containers" {
+				err := a.HandleListContainers(a.Bot, update.Message.Chat.ID)
+				if err != nil {
+					a.Logger.Info().Err(err).Msg("Failed to handle list containers")
 				}
 			}
 		}
-		a.Logger.Info().Msg("Bad ID tried to access the bot")
-		continue
+
+		if update.CallbackQuery != nil {
+			a.Logger.Info().Msg(update.CallbackQuery.Data)
+			data := update.CallbackQuery.Data
+
+			switch data {
+
+			case "/containers":
+				err := a.HandleListContainers(a.Bot, update.CallbackQuery.Message.Chat.ID)
+				if err != nil {
+					a.Logger.Info().Err(err).Msg("Failed to handle list containers")
+				}
+
+			default:
+				a.Logger.Info().Msg(update.CallbackQuery.Data)
+				parts := strings.SplitN(data, ":", 2)
+
+				if len(parts) == 2 {
+					action := parts[0]
+					value := parts[1]
+
+					if action == "start" || action == "stop" || action == "restart" {
+						a.allowDoRun(data, a.Bot, update.CallbackQuery.Message.Chat.ID)
+					}
+
+					if action == "allowstart" || action == "allowstop" || action == "allowrestart" {
+						a.HandleDoContainerAction(value)
+
+						parts := strings.SplitN(value, ":", 2)
+
+						msg := tgbotapi.NewMessage(update.CallbackQuery.Message.Chat.ID, fmt.Sprintf("*%s %s*", parts[0], escapeMDV2(parts[1])))
+						msg.ParseMode = "MarkdownV2"
+
+						_, err := a.Bot.Send(msg)
+						if err != nil {
+							a.Logger.Error().Err(err).Msg("Error sending message")
+						}
+
+						a.sendMainMenu(a.Bot, update.CallbackQuery.Message.Chat.ID)
+					}
+
+					if action == "cancelstop" || action == "cancelstart" {
+						parts := strings.SplitN(value, ":", 2)
+
+						msg := tgbotapi.NewMessage(update.CallbackQuery.Message.Chat.ID, fmt.Sprintf("*cancel action for %s*", escapeMDV2(parts[1])))
+						msg.ParseMode = "MarkdownV2"
+
+						_, err := a.Bot.Send(msg)
+						if err != nil {
+							a.Logger.Error().Err(err).Msg("Error sending message")
+						}
+
+						a.sendMainMenu(a.Bot, update.CallbackQuery.Message.Chat.ID)
+					}
+				}
+			}
+
+			callback := tgbotapi.NewCallback(update.CallbackQuery.ID, "")
+			if _, err := a.Bot.AnswerCallbackQuery(callback); err != nil {
+				a.Logger.Error().Err(err).Msg("callback error")
+			}
+		}
 	}
 }
 
@@ -146,21 +140,6 @@ func NewApp(config *types.Config, version string) *App {
 				Admins: config.Telegram.Admins,
 			},
 		},
-	}
-
-	if len(config.Telegram.Admins) > 0 {
-		logger.Debug().Msg("Using admins whitelist")
-
-		// bot.Use(func(next tele.HandlerFunc) tele.HandlerFunc {
-		// 	return func(c tele.Context) error {
-		// 		for _, chat := range config.Telegram.Admins {
-		// 			if chat == c.Sender().ID {
-		// 				return next(c)
-		// 			}
-		// 		}
-		// 		return app.HandleUnauthorized(c)
-		// 	}
-		// })
 	}
 
 	return app

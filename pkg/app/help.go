@@ -1,6 +1,10 @@
 package app
 
-import "strings"
+import (
+	"strings"
+
+	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api"
+)
 
 // func (a *App) HandleHelp(c tele.Context) error {
 // 	a.Logger.Info().
@@ -41,4 +45,16 @@ func escapeMDV2(s string) string {
 		"!", "\\!",
 	)
 	return replacer.Replace(s)
+}
+
+func (a *App) checkIdAdmin(update tgbotapi.Update) bool {
+	for _, adminID := range a.Config.Telegram.Admins {
+		switch {
+		case update.Message != nil && update.Message.Chat.ID == adminID:
+			return true
+		case update.CallbackQuery != nil && update.CallbackQuery.Message.Chat.ID == adminID:
+			return true
+		}
+	}
+	return false
 }
