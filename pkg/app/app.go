@@ -24,101 +24,6 @@ type App struct {
 	Version         string
 }
 
-func (a App) botRun() {
-	update := tgbotapi.NewUpdate(0)
-	update.Timeout = 60
-
-	updates, err := a.Bot.GetUpdatesChan(update)
-	if err != nil {
-		a.Logger.Info().Err(err).Msg("Failed to get Telegram updates")
-	}
-
-	for update := range updates {
-		check := a.checkIdAdmin(update)
-		if !check {
-			a.Logger.Info().Msg("Unauthorized user tried to access the bot")
-			continue
-		}
-
-		if update.Message != nil {
-			a.Logger.Info().Msg(update.Message.Text)
-			parts := strings.SplitN(update.Message.Text, "@", 2)
-
-			if parts[0] == "/start" {
-				a.sendMainMenu(a.Bot, update.Message.Chat.ID)
-			}
-			if parts[0] == "/containers" {
-				err := a.HandleListContainers(a.Bot, update.Message.Chat.ID)
-				if err != nil {
-					a.Logger.Info().Err(err).Msg("Failed to handle list containers")
-				}
-			}
-		}
-
-		if update.CallbackQuery != nil {
-			a.Logger.Info().Msg(update.CallbackQuery.Data)
-			data := update.CallbackQuery.Data
-
-			switch data {
-
-			case "/containers":
-				err := a.HandleListContainers(a.Bot, update.CallbackQuery.Message.Chat.ID)
-				if err != nil {
-					a.Logger.Info().Err(err).Msg("Failed to handle list containers")
-				}
-
-			default:
-				a.Logger.Info().Msg(update.CallbackQuery.Data)
-				parts := strings.SplitN(data, ":", 2)
-
-				if len(parts) == 2 {
-					action := parts[0]
-					value := parts[1]
-
-					if action == "start" || action == "stop" || action == "restart" {
-						a.allowDoRun(data, a.Bot, update.CallbackQuery.Message.Chat.ID)
-					}
-
-					if action == "allowstart" || action == "allowstop" || action == "allowrestart" {
-						a.HandleDoContainerAction(value)
-
-						parts := strings.SplitN(value, ":", 2)
-
-						msg := tgbotapi.NewMessage(update.CallbackQuery.Message.Chat.ID, fmt.Sprintf("*%s %s*", parts[0], escapeMDV2(parts[1])))
-						msg.ParseMode = "MarkdownV2"
-
-						_, err := a.Bot.Send(msg)
-						if err != nil {
-							a.Logger.Error().Err(err).Msg("Error sending message")
-						}
-
-						a.sendMainMenu(a.Bot, update.CallbackQuery.Message.Chat.ID)
-					}
-
-					if action == "cancelstop" || action == "cancelstart" {
-						parts := strings.SplitN(value, ":", 2)
-
-						msg := tgbotapi.NewMessage(update.CallbackQuery.Message.Chat.ID, fmt.Sprintf("*cancel action for %s*", escapeMDV2(parts[1])))
-						msg.ParseMode = "MarkdownV2"
-
-						_, err := a.Bot.Send(msg)
-						if err != nil {
-							a.Logger.Error().Err(err).Msg("Error sending message")
-						}
-
-						a.sendMainMenu(a.Bot, update.CallbackQuery.Message.Chat.ID)
-					}
-				}
-			}
-
-			callback := tgbotapi.NewCallback(update.CallbackQuery.ID, "")
-			if _, err := a.Bot.AnswerCallbackQuery(callback); err != nil {
-				a.Logger.Error().Err(err).Msg("callback error")
-			}
-		}
-	}
-}
-
 func NewApp(config *types.Config, version string) *App {
 	logger := loggerPkg.GetLogger(config.Log)
 	templateManager := templates.NewTemplateManager()
@@ -165,49 +70,141 @@ func (a *App) Start() {
 
 }
 
-func (a *App) sendMainMenu(bot *tgbotapi.BotAPI, chatID int64) {
-	msg := tgbotapi.NewMessage(chatID, "👉 *Select an action:*")
+func (a App) botRun() {
+	update := tgbotapi.NewUpdate(0)
+	update.Timeout = 60
 
-	keyboard := tgbotapi.NewInlineKeyboardMarkup(
-		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("👀 Show Containers", "/containers"),
-		),
-	)
-	// msg.MessageThreadID = threadID
-	msg.ReplyMarkup = keyboard
-	msg.ParseMode = "MarkdownV2"
-
-	_, err := bot.Send(msg)
+	updates, err := a.Bot.GetUpdatesChan(update)
 	if err != nil {
-		a.Logger.Error().Err(err).Msg("Error sending message")
+		a.Logger.Info().Err(err).Msg("Failed to get Telegram updates")
+	}
+
+	for update := range updates {
+		check := a.checkIdAdmin(update)
+		if !check {
+			a.Logger.Info().Msg("Unauthorized user tried to access the bot")
+			continue
+		}
+
+		if update.Message != nil {
+			if update.Message.IsCommand() && update.Message.Command() == "start" {
+				chatID := update.Message.Chat.ID
+				a.HandleListContainers(a.Bot, chatID)
+			}
+			continue
+		}
+
+		if update.CallbackQuery != nil {
+			q := update.CallbackQuery
+			chatID := q.Message.Chat.ID
+			msgID := q.Message.MessageID
+
+			_, err = a.Bot.AnswerCallbackQuery(tgbotapi.NewCallback(q.ID, ""))
+			if err != nil {
+				a.Logger.Info().Err(err).Msg("Failed to answer callback query")
+			}
+
+			parts := strings.Split(q.Data, ":")
+			if len(parts) < 1 {
+				continue
+			}
+
+			switch parts[0] {
+			case "containers":
+				a.HandleListContainers(a.Bot, chatID)
+
+			case "stop", "start":
+				if len(parts) != 2 {
+					continue
+				}
+
+				a.allowDoRun(a.Bot, chatID, msgID, q.Data)
+
+			case "allowstop", "allowstart", "allowrestart":
+				if len(parts) != 3 {
+					continue
+				}
+
+				value := strings.Join(parts[1:], ":")
+				a.Logger.Info().Msg(value)
+
+				msg := tgbotapi.NewEditMessageText(chatID, msgID, fmt.Sprintf("✅ *%s %s*", parts[1], parts[2]))
+				msg.ParseMode = "MarkdownV2"
+
+				_, err := a.Bot.Send(msg)
+				if err != nil {
+					a.Logger.Error().Err(err).Msg("Error sending message")
+				}
+
+				a.HandleDoContainerAction(value)
+				a.sendMainMenu(a.Bot, chatID)
+
+			case "cancelstop":
+				msg := tgbotapi.NewMessage(chatID, fmt.Sprintf("❌ *cancel action for %s*", escapeMDV2(parts[2])))
+				msg.ParseMode = "MarkdownV2"
+
+				_, err := a.Bot.Send(msg)
+				if err != nil {
+					a.Logger.Error().Err(err).Msg("Error sending message")
+				}
+
+				a.HandleListContainers(a.Bot, chatID)
+
+			case "cancelstart":
+				msg := tgbotapi.NewMessage(chatID, fmt.Sprintf("❌ *cancel action for %s*", escapeMDV2(parts[2])))
+				msg.ParseMode = "MarkdownV2"
+
+				_, err := a.Bot.Send(msg)
+				if err != nil {
+					a.Logger.Error().Err(err).Msg("Error sending message")
+				}
+
+				a.HandleListContainers(a.Bot, chatID)
+			}
+		}
 	}
 }
 
-func (a *App) allowDoRun(data string, bot *tgbotapi.BotAPI, chatID int64) {
+func (a *App) sendMainMenu(bot *tgbotapi.BotAPI, chatID int64) (int, error) {
+	msg := tgbotapi.NewMessage(chatID, "👉 *Select an action:*")
+	keyboard := tgbotapi.NewInlineKeyboardMarkup(
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("👀 Show Containers", "containers"),
+		),
+	)
+	msg.ReplyMarkup = keyboard
+	msg.ParseMode = "MarkdownV2"
+
+	sent, err := bot.Send(msg)
+	if err != nil {
+		a.Logger.Error().Err(err).Msg("Error sending message")
+		return 0, err
+	}
+	return sent.MessageID, nil
+}
+
+func (a *App) allowDoRun(bot *tgbotapi.BotAPI, chatID int64, msgID int, data string) {
 	parts := strings.SplitN(data, ":", 2)
-	msg := tgbotapi.NewMessage(chatID, fmt.Sprintf("🫵 *Are you sure?*\n*%s* *%s*", parts[0], parts[1]))
+	msg := tgbotapi.NewEditMessageText(chatID, msgID, fmt.Sprintf("🫵 *Are you sure?*\n*%s* *%s*", parts[0], escapeMDV2(parts[1])))
 
 	if parts[0] == "stop" {
 		keyboard := tgbotapi.NewInlineKeyboardMarkup(
 			tgbotapi.NewInlineKeyboardRow(
-				tgbotapi.NewInlineKeyboardButtonData("✅ Yes", "allow"+parts[0]+":"+data),
-				tgbotapi.NewInlineKeyboardButtonData("☑️ No", "cancel"+parts[0]+":"+data),
-				tgbotapi.NewInlineKeyboardButtonData("🔄 Restart", "allowrestart"+":"+"restart:"+parts[1]),
+				tgbotapi.NewInlineKeyboardButtonData("✅ Yes", "allow"+parts[0]+":"+escapeMDV2(data)),
+				tgbotapi.NewInlineKeyboardButtonData("☑️ No", "cancel"+parts[0]+":"+escapeMDV2(data)),
+				tgbotapi.NewInlineKeyboardButtonData("🔄 Restart", "allowrestart"+":"+"restart:"+escapeMDV2(parts[1])),
 			),
 		)
-		msg.ReplyMarkup = keyboard
-		// msg.ParseMode = "MarkdownV2"
+		msg.ReplyMarkup = &keyboard
 	} else {
 		keyboard := tgbotapi.NewInlineKeyboardMarkup(
 			tgbotapi.NewInlineKeyboardRow(
-				tgbotapi.NewInlineKeyboardButtonData("✅ Yes", "allow"+parts[0]+":"+data),
-				tgbotapi.NewInlineKeyboardButtonData("☑️ No", "cancel"+parts[0]+":"+data),
+				tgbotapi.NewInlineKeyboardButtonData("✅ Yes", "allow"+parts[0]+":"+escapeMDV2(data)),
+				tgbotapi.NewInlineKeyboardButtonData("☑️ No", "cancel"+parts[0]+":"+escapeMDV2(data)),
 			),
 		)
-		msg.ReplyMarkup = keyboard
-		// msg.ParseMode = "MarkdownV2"
+		msg.ReplyMarkup = &keyboard
 	}
-	// msg.MessageThreadID = threadID
 	msg.ParseMode = "MarkdownV2"
 
 	_, err := bot.Send(msg)

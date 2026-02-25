@@ -56,5 +56,6 @@ func (a *App) checkIdAdmin(update tgbotapi.Update) bool {
 			return true
 		}
 	}
+
 	return false
 }

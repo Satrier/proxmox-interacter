@@ -9,7 +9,7 @@ import (
 func (a *App) HandleListContainers(bot *tgbotapi.BotAPI, chatID int64) error {
 	clusters, err := a.ProxmoxManager.GetNodes()
 	if err != nil {
-		return fmt.Errorf("Error fetching nodes: %s", err)
+		a.Logger.Error().Err(err).Msg("Error fetching nodes")
 	}
 
 	for _, cluster := range clusters {
