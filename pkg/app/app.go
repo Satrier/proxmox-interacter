@@ -144,7 +144,6 @@ func (a App) botRun() {
 				}
 
 				a.HandleDoContainerAction(value)
-				// a.sendMainMenu(a.Bot, chatID)
 
 			case "cancelstop":
 				msg := tgbotapi.NewMessage(chatID, fmt.Sprintf("❌ *cancel action for %s*", escapeMDV2(parts[2])))
@@ -155,8 +154,6 @@ func (a App) botRun() {
 					a.Logger.Error().Err(err).Msg("Error sending message")
 				}
 
-				a.HandleListContainers(a.Bot, chatID)
-
 			case "cancelstart":
 				msg := tgbotapi.NewMessage(chatID, fmt.Sprintf("❌ *cancel action for %s*", escapeMDV2(parts[2])))
 				msg.ParseMode = "MarkdownV2"
@@ -165,8 +162,6 @@ func (a App) botRun() {
 				if err != nil {
 					a.Logger.Error().Err(err).Msg("Error sending message")
 				}
-
-				a.HandleListContainers(a.Bot, chatID)
 			}
 		}
 	}
