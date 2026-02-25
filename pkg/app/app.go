@@ -89,6 +89,12 @@ func (a App) botRun() {
 		if update.Message != nil {
 			if update.Message.IsCommand() && update.Message.Command() == "start" {
 				chatID := update.Message.Chat.ID
+				a.Logger.Info().Msgf("Run start menu for chat ID: %d", chatID)
+				a.HandleListContainers(a.Bot, chatID)
+			}
+			if update.Message.IsCommand() && update.Message.Command() == "containers" {
+				chatID := update.Message.Chat.ID
+				a.Logger.Info().Msgf("Run containers for chat ID: %d", chatID)
 				a.HandleListContainers(a.Bot, chatID)
 			}
 			continue
@@ -98,6 +104,8 @@ func (a App) botRun() {
 			q := update.CallbackQuery
 			chatID := q.Message.Chat.ID
 			msgID := q.Message.MessageID
+
+			a.Logger.Info().Msgf("Received callback query for chat ID: %d", chatID)
 
 			_, err = a.Bot.AnswerCallbackQuery(tgbotapi.NewCallback(q.ID, ""))
 			if err != nil {
@@ -126,7 +134,6 @@ func (a App) botRun() {
 				}
 
 				value := strings.Join(parts[1:], ":")
-				a.Logger.Info().Msg(value)
 
 				msg := tgbotapi.NewEditMessageText(chatID, msgID, fmt.Sprintf("✅ *%s %s*", parts[1], parts[2]))
 				msg.ParseMode = "MarkdownV2"
@@ -137,7 +144,7 @@ func (a App) botRun() {
 				}
 
 				a.HandleDoContainerAction(value)
-				a.sendMainMenu(a.Bot, chatID)
+				// a.sendMainMenu(a.Bot, chatID)
 
 			case "cancelstop":
 				msg := tgbotapi.NewMessage(chatID, fmt.Sprintf("❌ *cancel action for %s*", escapeMDV2(parts[2])))
