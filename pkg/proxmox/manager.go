@@ -186,3 +186,13 @@ func (m *Manager) ScaleContainer(
 
 	return nil
 }
+
+func (m *Manager) FindClientByClusterName(clusterName string) (*Client, bool) {
+	for _, client := range m.Clients {
+		if client.Config.Name == clusterName {
+			return client, true
+		}
+	}
+
+	return nil, false
+}

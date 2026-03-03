@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 
 	"github.com/rs/zerolog"
 )
@@ -187,6 +188,7 @@ func (c *Client) DoQuery(method string, queryUrl string, body interface{}) (io.R
 		Transport: &http.Transport{
 			TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
 		},
+		Timeout: 3 * time.Second,
 	}
 
 	var req *http.Request

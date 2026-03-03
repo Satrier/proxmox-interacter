@@ -4,7 +4,6 @@ import (
 	"fmt"
 	loggerPkg "main/pkg/logger"
 	"main/pkg/proxmox"
-	"main/pkg/templates"
 	"main/pkg/types"
 	"strings"
 
@@ -16,17 +15,19 @@ import (
 const MaxMessageSize = 4000
 
 type App struct {
-	Config          types.Config
-	ProxmoxManager  *proxmox.Manager
-	TemplateManager *templates.TemplateManager
-	Logger          *zerolog.Logger
-	Bot             *tgbotapi.BotAPI
-	Version         string
+	Config         types.Config
+	ProxmoxManager *proxmox.Manager
+	// TemplateManager *templates.TemplateManager
+	Cluster types.ClusterInfos
+	// Client  *proxmox.Client
+	Logger  *zerolog.Logger
+	Bot     *tgbotapi.BotAPI
+	Version string
 }
 
 func NewApp(config *types.Config, version string) *App {
 	logger := loggerPkg.GetLogger(config.Log)
-	templateManager := templates.NewTemplateManager()
+	// templateManager := templates.NewTemplateManager()
 
 	bot, err := tgbotapi.NewBotAPI(config.Telegram.Token)
 	if err != nil {
@@ -35,11 +36,11 @@ func NewApp(config *types.Config, version string) *App {
 
 	proxmoxManager := proxmox.NewManager(config, logger)
 	app := &App{
-		Logger:          logger,
-		ProxmoxManager:  proxmoxManager,
-		TemplateManager: templateManager,
-		Bot:             bot,
-		Version:         version,
+		Logger:         logger,
+		ProxmoxManager: proxmoxManager,
+		// TemplateManager: templateManager,
+		Bot:     bot,
+		Version: version,
 		Config: types.Config{
 			Telegram: types.TelegramConfig{
 				Admins: config.Telegram.Admins,
@@ -90,12 +91,13 @@ func (a App) botRun() {
 			if update.Message.IsCommand() && update.Message.Command() == "start" {
 				chatID := update.Message.Chat.ID
 				a.Logger.Info().Msgf("Run start menu for chat ID: %d", chatID)
-				a.HandleListContainers(a.Bot, chatID)
+				// a.HandleListContainers(a.Bot, chatID)
+				a.sendMainMenu(chatID)
 			}
 			if update.Message.IsCommand() && update.Message.Command() == "containers" {
 				chatID := update.Message.Chat.ID
 				a.Logger.Info().Msgf("Run containers for chat ID: %d", chatID)
-				a.HandleListContainers(a.Bot, chatID)
+				a.HandleListContainers(chatID)
 			}
 			continue
 		}
@@ -119,14 +121,37 @@ func (a App) botRun() {
 
 			switch parts[0] {
 			case "containers":
-				a.HandleListContainers(a.Bot, chatID)
+				a.HandleListContainers(chatID)
+
+			case "proxmoxList":
+				a.HandleListProxmox(chatID, msgID)
+
+			case "showVm":
+				a.ShowContainer(parts[1], chatID, msgID)
+
+			case "clusterdown":
+				msg := tgbotapi.NewEditMessageText(chatID, msgID, fmt.Sprintf("❌ *%s is offline*", escapeMDV2(parts[1])))
+				msg.ParseMode = "MarkdownV2"
+
+				_, err = a.Bot.Send(msg)
+				if err != nil {
+					a.Logger.Error().Err(err).Msg("Error sending message")
+				}
+
+				a.sendMainMenu(chatID)
+
+			case "vm":
+				a.allowDoRun(chatID, msgID, q.Data)
+
+			case "back":
+				a.sendMainMenu(chatID)
 
 			case "stop", "start":
 				if len(parts) != 2 {
 					continue
 				}
 
-				a.allowDoRun(a.Bot, chatID, msgID, q.Data)
+				a.allowDoRun(chatID, msgID, q.Data)
 
 			case "allowstop", "allowstart", "allowrestart":
 				if len(parts) != 3 {
@@ -143,7 +168,9 @@ func (a App) botRun() {
 					a.Logger.Error().Err(err).Msg("Error sending message")
 				}
 
+				a.Logger.Info().Msgf(value)
 				a.HandleDoContainerAction(value)
+				a.sendMainMenu(chatID)
 
 			case "cancelstop":
 				msg := tgbotapi.NewMessage(chatID, fmt.Sprintf("❌ *cancel action for %s*", escapeMDV2(parts[2])))
@@ -154,6 +181,8 @@ func (a App) botRun() {
 					a.Logger.Error().Err(err).Msg("Error sending message")
 				}
 
+				a.sendMainMenu(chatID)
+
 			case "cancelstart":
 				msg := tgbotapi.NewMessage(chatID, fmt.Sprintf("❌ *cancel action for %s*", escapeMDV2(parts[2])))
 				msg.ParseMode = "MarkdownV2"
@@ -162,22 +191,25 @@ func (a App) botRun() {
 				if err != nil {
 					a.Logger.Error().Err(err).Msg("Error sending message")
 				}
+
+				a.sendMainMenu(chatID)
 			}
 		}
 	}
 }
 
-func (a *App) sendMainMenu(bot *tgbotapi.BotAPI, chatID int64) (int, error) {
+func (a *App) sendMainMenu(chatID int64) (int, error) {
 	msg := tgbotapi.NewMessage(chatID, "👉 *Select an action:*")
 	keyboard := tgbotapi.NewInlineKeyboardMarkup(
 		tgbotapi.NewInlineKeyboardRow(
 			tgbotapi.NewInlineKeyboardButtonData("👀 Show Containers", "containers"),
+			tgbotapi.NewInlineKeyboardButtonData("👀 Show Proxmox", "proxmoxList"),
 		),
 	)
 	msg.ReplyMarkup = keyboard
 	msg.ParseMode = "MarkdownV2"
 
-	sent, err := bot.Send(msg)
+	sent, err := a.Bot.Send(msg)
 	if err != nil {
 		a.Logger.Error().Err(err).Msg("Error sending message")
 		return 0, err
@@ -185,7 +217,7 @@ func (a *App) sendMainMenu(bot *tgbotapi.BotAPI, chatID int64) (int, error) {
 	return sent.MessageID, nil
 }
 
-func (a *App) allowDoRun(bot *tgbotapi.BotAPI, chatID int64, msgID int, data string) {
+func (a *App) allowDoRun(chatID int64, msgID int, data string) {
 	parts := strings.SplitN(data, ":", 2)
 	msg := tgbotapi.NewEditMessageText(chatID, msgID, fmt.Sprintf("🫵 *Are you sure?*\n*%s* *%s*", parts[0], escapeMDV2(parts[1])))
 
@@ -209,7 +241,7 @@ func (a *App) allowDoRun(bot *tgbotapi.BotAPI, chatID int64, msgID int, data str
 	}
 	msg.ParseMode = "MarkdownV2"
 
-	_, err := bot.Send(msg)
+	_, err := a.Bot.Send(msg)
 	if err != nil {
 		a.Logger.Error().Err(err).Msg("Error sending message")
 	}
