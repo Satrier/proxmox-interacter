@@ -29,7 +29,7 @@ func (a *App) HandleListContainers(chatID int64) error {
 			}
 		}
 
-		btn := tgbotapi.NewInlineKeyboardButtonData("⬅︎ Go back ", "back:home")
+		btn := tgbotapi.NewInlineKeyboardButtonData("⬅︎ Go to Home ", "back:home")
 		rows = append(rows, tgbotapi.NewInlineKeyboardRow(btn))
 
 		msg := tgbotapi.NewMessage(chatID, fmt.Sprintf("🖥️ *%s*", escapeMDV2(cluster.Name)))
@@ -64,7 +64,7 @@ func (a *App) HandleListProxmox(chatID int64, msgID int) error {
 		}
 	}
 
-	btn := tgbotapi.NewInlineKeyboardButtonData("⬅︎ Go back ", "back:home")
+	btn := tgbotapi.NewInlineKeyboardButtonData("⬅︎ Go to Home ", "back:home")
 	rows = append(rows, tgbotapi.NewInlineKeyboardRow(btn))
 
 	msg := tgbotapi.NewEditMessageText(chatID, msgID, "✅ All Proxmox Clusters:")
@@ -109,7 +109,7 @@ func (a *App) HandleListByProxmoxName(clusterName string, chatID int64, msgID in
 		}
 	}
 
-	btn := tgbotapi.NewInlineKeyboardButtonData("⬅︎ Go back ", "back:home")
+	btn := tgbotapi.NewInlineKeyboardButtonData("⬅︎ Go to Home ", "back:home")
 	rows = append(rows, tgbotapi.NewInlineKeyboardRow(btn))
 
 	msg := tgbotapi.NewEditMessageText(chatID, msgID, "✅ All Proxmox Nodes for cluster "+escapeMDV2(clusterName)+":")
@@ -155,7 +155,7 @@ func (a *App) ShowContainer(cluster string, chatID int64, msgID int) error {
 				}
 			}
 
-			btn := tgbotapi.NewInlineKeyboardButtonData("⬅︎ Go back ", "back:home")
+			btn := tgbotapi.NewInlineKeyboardButtonData("⬅︎ Go to Home ", "back:home")
 			rows = append(rows, tgbotapi.NewInlineKeyboardRow(btn))
 
 			msg := tgbotapi.NewEditMessageText(chatID, msgID, "✅ All  Nodes for cluster "+escapeMDV2(cluster)+":")
