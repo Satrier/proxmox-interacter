@@ -1,3 +1,11 @@
+# The redesigned bot HandleCallback processes inline keyboard button presses
+<img width="417" height="170" alt="image" src="https://github.com/user-attachments/assets/b2775526-8f06-4d53-b1de-5c39c907a7f4" />
+
+<img width="449" height="626" alt="image" src="https://github.com/user-attachments/assets/d61bbd00-5bc1-4167-b477-f6955632d815" />
+
+<img width="304" height="150" alt="image" src="https://github.com/user-attachments/assets/0bec96ee-c6cb-49aa-825b-01625a87ddd6" />
+
+
 # proxmox-interacter
 
 ![Latest release](https://img.shields.io/github/v/release/QuokkaS/proxmox-interacter)
