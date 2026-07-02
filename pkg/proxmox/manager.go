@@ -118,6 +118,61 @@ func (m *Manager) RestartContainer(containerName string) error {
 	return err
 }
 
+// FindContainerByVMID looks up a container within a single, known Proxmox cluster by VMID,
+// avoiding the need to query every configured cluster just to act on one container.
+func (m *Manager) FindContainerByVMID(clusterIndex int, vmid int64) (*types.Container, *Client, error) {
+	if clusterIndex < 0 || clusterIndex >= len(m.Clients) {
+		return nil, nil, fmt.Errorf("cluster #%d is not found", clusterIndex)
+	}
+
+	client := m.Clients[clusterIndex]
+
+	nodes, err := client.GetNodesWithAssets()
+	if err != nil {
+		return nil, nil, err
+	}
+
+	for _, node := range nodes {
+		for _, container := range node.Containers {
+			if container.VMID == vmid {
+				return &container, client, nil
+			}
+		}
+	}
+
+	return nil, nil, fmt.Errorf("container with VMID %d is not found on cluster #%d", vmid, clusterIndex)
+}
+
+func (m *Manager) StartContainerByVMID(clusterIndex int, vmid int64) error {
+	container, client, err := m.FindContainerByVMID(clusterIndex, vmid)
+	if err != nil {
+		return err
+	}
+
+	_, err = client.StartContainer(*container)
+	return err
+}
+
+func (m *Manager) StopContainerByVMID(clusterIndex int, vmid int64) error {
+	container, client, err := m.FindContainerByVMID(clusterIndex, vmid)
+	if err != nil {
+		return err
+	}
+
+	_, err = client.StopContainer(*container)
+	return err
+}
+
+func (m *Manager) RestartContainerByVMID(clusterIndex int, vmid int64) error {
+	container, client, err := m.FindContainerByVMID(clusterIndex, vmid)
+	if err != nil {
+		return err
+	}
+
+	_, err = client.RebootContainer(*container)
+	return err
+}
+
 func (m *Manager) GetContainerConfig(container types.Container, clusterName string) (*types.ContainerConfig, error) {
 	client, found := m.findClientByName(clusterName)
 	if !found {

@@ -2,7 +2,9 @@ package app
 
 import (
 	"fmt"
-	"strings"
+	"strconv"
+
+	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api"
 )
 
 type containerAction struct {
@@ -11,7 +13,7 @@ type containerAction struct {
 	shouldContainerBeStarted bool
 	actionPrefix             string
 	cancelActionPrefix       string
-	function                 func(string) error
+	function                 func(clusterIndex int, vmid int64) error
 }
 
 func (a *App) getAction(action string) containerAction {
@@ -22,7 +24,7 @@ func (a *App) getAction(action string) containerAction {
 			shouldContainerBeStarted: true,
 			actionPrefix:             CallbackPrefixRestart,
 			cancelActionPrefix:       CallbackPrefixCancelRestart,
-			function:                 a.ProxmoxManager.RestartContainer,
+			function:                 a.ProxmoxManager.RestartContainerByVMID,
 		},
 		"stop": {
 			action:                   "stop",
@@ -30,7 +32,7 @@ func (a *App) getAction(action string) containerAction {
 			shouldContainerBeStarted: true,
 			actionPrefix:             CallbackPrefixStop,
 			cancelActionPrefix:       CallbackPrefixCancelStop,
-			function:                 a.ProxmoxManager.StopContainer,
+			function:                 a.ProxmoxManager.StopContainerByVMID,
 		},
 		"start": {
 			action:                   "start",
@@ -38,30 +40,37 @@ func (a *App) getAction(action string) containerAction {
 			shouldContainerBeStarted: false,
 			actionPrefix:             CallbackPrefixStart,
 			cancelActionPrefix:       CallbackPrefixCancelStart,
-			function:                 a.ProxmoxManager.StartContainer,
+			function:                 a.ProxmoxManager.StartContainerByVMID,
 		},
 	}
 
 	return actions[action]
 }
 
-func (a *App) HandleDoContainerAction(actionName string) error {
-	args := strings.SplitN(actionName, ":", 2)
-	action := a.getAction(args[0])
-	// data = args[1]
+// HandleDoContainerAction executes a confirmed start/stop/restart action against a specific
+// container, identified unambiguously by (clusterIndex, vmid) rather than by name, so that
+// containers sharing a name across different Proxmox clusters can never be confused with
+// each other.
+func (a *App) HandleDoContainerAction(chatID int64, actionName, clusterIndexStr, vmidStr, name string) {
+	action := a.getAction(actionName)
 
-	clusters, err := a.ProxmoxManager.GetNodes()
+	clusterIndex, err := strconv.Atoi(clusterIndexStr)
 	if err != nil {
-		a.Logger.Error().Err(err).Msg("Error fetching nodes")
+		a.sendActionError(chatID, actionName, name, fmt.Errorf("invalid cluster reference"))
+		return
 	}
 
-	container, _, err := clusters.FindContainer(args[1])
+	vmid, err := strconv.ParseInt(vmidStr, 10, 64)
 	if err != nil {
+		a.sendActionError(chatID, actionName, name, fmt.Errorf("invalid container reference"))
+		return
+	}
 
-		if err != nil {
-			a.Logger.Error().Err(err).Msg("Error rendering container template")
-		}
-
+	container, _, err := a.ProxmoxManager.FindContainerByVMID(clusterIndex, vmid)
+	if err != nil {
+		a.Logger.Error().Err(err).Msg("Error finding container")
+		a.sendActionError(chatID, actionName, name, err)
+		return
 	}
 
 	if container.IsRunning() && !action.shouldContainerBeStarted {
@@ -70,9 +79,22 @@ func (a *App) HandleDoContainerAction(actionName string) error {
 		a.Logger.Info().Msg("Container is not running!")
 	}
 
-	if err := action.function(args[1]); err != nil {
+	if err := action.function(clusterIndex, vmid); err != nil {
 		a.Logger.Error().Err(err).Msg(fmt.Sprintf("Error %s container", action.doneAction))
+		a.sendActionError(chatID, actionName, name, err)
 	}
+}
 
-	return nil
+func (a *App) sendActionError(chatID int64, actionName, name string, err error) {
+	msg := tgbotapi.NewMessage(chatID, fmt.Sprintf(
+		"❌ *Could not %s %s: %s*",
+		escapeMDV2(actionName),
+		escapeMDV2(name),
+		escapeMDV2(err.Error()),
+	))
+	msg.ParseMode = "MarkdownV2"
+
+	if _, sendErr := a.Bot.Send(msg); sendErr != nil {
+		a.Logger.Error().Err(sendErr).Msg("Error sending message")
+	}
 }

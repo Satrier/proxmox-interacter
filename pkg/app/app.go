@@ -114,12 +114,12 @@ func (a App) botRun() {
 				a.Logger.Info().Err(err).Msg("Failed to answer callback query")
 			}
 
-			parts := strings.Split(q.Data, ":")
-			if len(parts) < 1 {
+			dispatch := strings.SplitN(q.Data, ":", 2)
+			if len(dispatch) < 1 {
 				continue
 			}
 
-			switch parts[0] {
+			switch dispatch[0] {
 			case "containers":
 				a.HandleListContainers(chatID)
 
@@ -127,10 +127,18 @@ func (a App) botRun() {
 				a.HandleListProxmox(chatID, msgID)
 
 			case "showVm":
-				a.ShowContainer(parts[1], chatID, msgID)
+				if len(dispatch) != 2 {
+					continue
+				}
+
+				a.ShowContainer(dispatch[1], chatID, msgID)
 
 			case "clusterdown":
-				msg := tgbotapi.NewEditMessageText(chatID, msgID, fmt.Sprintf("❌ *%s is offline*", escapeMDV2(parts[1])))
+				if len(dispatch) != 2 {
+					continue
+				}
+
+				msg := tgbotapi.NewEditMessageText(chatID, msgID, fmt.Sprintf("❌ *%s is offline*", escapeMDV2(dispatch[1])))
 				msg.ParseMode = "MarkdownV2"
 
 				_, err = a.Bot.Send(msg)
@@ -147,20 +155,23 @@ func (a App) botRun() {
 				a.sendMainMenu(chatID)
 
 			case "stop", "start":
-				if len(parts) != 2 {
+				// q.Data = "action:clusterIndex:vmid:name"
+				if len(strings.SplitN(q.Data, ":", 4)) != 4 {
 					continue
 				}
 
 				a.allowDoRun(chatID, msgID, q.Data)
 
-			case "allowstop", "allowstart", "allowrestart":
-				if len(parts) != 3 {
+			case "allow":
+				// q.Data = "allow:action:clusterIndex:vmid:name"
+				fields := strings.SplitN(q.Data, ":", 5)
+				if len(fields) != 5 {
 					continue
 				}
 
-				value := strings.Join(parts[1:], ":")
+				action, clusterIndex, vmid, name := fields[1], fields[2], fields[3], fields[4]
 
-				msg := tgbotapi.NewEditMessageText(chatID, msgID, fmt.Sprintf("✅ *%s %s*", parts[1], parts[2]))
+				msg := tgbotapi.NewEditMessageText(chatID, msgID, fmt.Sprintf("✅ *%s %s*", action, escapeMDV2(name)))
 				msg.ParseMode = "MarkdownV2"
 
 				_, err := a.Bot.Send(msg)
@@ -168,23 +179,17 @@ func (a App) botRun() {
 					a.Logger.Error().Err(err).Msg("Error sending message")
 				}
 
-				a.Logger.Info().Msgf(value)
-				a.HandleDoContainerAction(value)
+				a.HandleDoContainerAction(chatID, action, clusterIndex, vmid, name)
 				a.sendMainMenu(chatID)
 
-			case "cancelstop":
-				msg := tgbotapi.NewMessage(chatID, fmt.Sprintf("❌ *cancel action for %s*", escapeMDV2(parts[2])))
-				msg.ParseMode = "MarkdownV2"
-
-				_, err := a.Bot.Send(msg)
-				if err != nil {
-					a.Logger.Error().Err(err).Msg("Error sending message")
+			case "cancel":
+				// q.Data = "cancel:action:clusterIndex:vmid:name"
+				fields := strings.SplitN(q.Data, ":", 5)
+				if len(fields) != 5 {
+					continue
 				}
 
-				a.sendMainMenu(chatID)
-
-			case "cancelstart":
-				msg := tgbotapi.NewMessage(chatID, fmt.Sprintf("❌ *cancel action for %s*", escapeMDV2(parts[2])))
+				msg := tgbotapi.NewMessage(chatID, fmt.Sprintf("❌ *cancel action for %s*", escapeMDV2(fields[4])))
 				msg.ParseMode = "MarkdownV2"
 
 				_, err := a.Bot.Send(msg)
@@ -217,24 +222,35 @@ func (a *App) sendMainMenu(chatID int64) (int, error) {
 	return sent.MessageID, nil
 }
 
+// allowDoRun renders the "Are you sure?" confirmation step for a container action.
+// data is "action:clusterIndex:vmid:name" as built by containerCallbackData; the name is kept
+// raw (unescaped) in callback data and only escaped when rendered into Markdown message text,
+// so it can never corrupt the identifier used for lookup.
 func (a *App) allowDoRun(chatID int64, msgID int, data string) {
-	parts := strings.SplitN(data, ":", 2)
-	msg := tgbotapi.NewEditMessageText(chatID, msgID, fmt.Sprintf("🫵 *Are you sure?*\n*%s* *%s*", parts[0], escapeMDV2(parts[1])))
+	fields := strings.SplitN(data, ":", 4)
+	if len(fields) != 4 {
+		return
+	}
 
-	if parts[0] == "stop" {
+	action, clusterIndex, vmid, name := fields[0], fields[1], fields[2], fields[3]
+	rest := clusterIndex + ":" + vmid + ":" + name
+
+	msg := tgbotapi.NewEditMessageText(chatID, msgID, fmt.Sprintf("🫵 *Are you sure?*\n*%s* *%s*", action, escapeMDV2(name)))
+
+	if action == "stop" {
 		keyboard := tgbotapi.NewInlineKeyboardMarkup(
 			tgbotapi.NewInlineKeyboardRow(
-				tgbotapi.NewInlineKeyboardButtonData("✅ Yes", "allow"+parts[0]+":"+escapeMDV2(data)),
-				tgbotapi.NewInlineKeyboardButtonData("☑️ No", "cancel"+parts[0]+":"+escapeMDV2(data)),
-				tgbotapi.NewInlineKeyboardButtonData("🔄 Restart", "allowrestart"+":"+"restart:"+escapeMDV2(parts[1])),
+				tgbotapi.NewInlineKeyboardButtonData("✅ Yes", "allow:"+action+":"+rest),
+				tgbotapi.NewInlineKeyboardButtonData("☑️ No", "cancel:"+action+":"+rest),
+				tgbotapi.NewInlineKeyboardButtonData("🔄 Restart", "allow:restart:"+rest),
 			),
 		)
 		msg.ReplyMarkup = &keyboard
 	} else {
 		keyboard := tgbotapi.NewInlineKeyboardMarkup(
 			tgbotapi.NewInlineKeyboardRow(
-				tgbotapi.NewInlineKeyboardButtonData("✅ Yes", "allow"+parts[0]+":"+escapeMDV2(data)),
-				tgbotapi.NewInlineKeyboardButtonData("☑️ No", "cancel"+parts[0]+":"+escapeMDV2(data)),
+				tgbotapi.NewInlineKeyboardButtonData("✅ Yes", "allow:"+action+":"+rest),
+				tgbotapi.NewInlineKeyboardButtonData("☑️ No", "cancel:"+action+":"+rest),
 			),
 		)
 		msg.ReplyMarkup = &keyboard
