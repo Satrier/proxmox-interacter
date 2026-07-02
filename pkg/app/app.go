@@ -170,8 +170,9 @@ func (a App) botRun() {
 				}
 
 				action, clusterIndex, vmid, name := fields[1], fields[2], fields[3], fields[4]
+				act := a.getAction(action)
 
-				msg := tgbotapi.NewEditMessageText(chatID, msgID, fmt.Sprintf("✅ *%s %s*", action, escapeMDV2(name)))
+				msg := tgbotapi.NewEditMessageText(chatID, msgID, fmt.Sprintf("%s *%s %s*", act.resultIcon, act.doneAction, escapeMDV2(name)))
 				msg.ParseMode = "MarkdownV2"
 
 				_, err := a.Bot.Send(msg)
@@ -240,17 +241,17 @@ func (a *App) allowDoRun(chatID int64, msgID int, data string) {
 	if action == "stop" {
 		keyboard := tgbotapi.NewInlineKeyboardMarkup(
 			tgbotapi.NewInlineKeyboardRow(
-				tgbotapi.NewInlineKeyboardButtonData("✅ Yes", "allow:"+action+":"+rest),
-				tgbotapi.NewInlineKeyboardButtonData("☑️ No", "cancel:"+action+":"+rest),
-				tgbotapi.NewInlineKeyboardButtonData("🔄 Restart", "allow:restart:"+rest),
+				tgbotapi.NewInlineKeyboardButtonData("🛑 Stop", "allow:"+action+":"+rest),
+				tgbotapi.NewInlineKeyboardButtonData("❌ Cancel", "cancel:"+action+":"+rest),
+				tgbotapi.NewInlineKeyboardButtonData("🔄 Restart instead", "allow:restart:"+rest),
 			),
 		)
 		msg.ReplyMarkup = &keyboard
 	} else {
 		keyboard := tgbotapi.NewInlineKeyboardMarkup(
 			tgbotapi.NewInlineKeyboardRow(
-				tgbotapi.NewInlineKeyboardButtonData("✅ Yes", "allow:"+action+":"+rest),
-				tgbotapi.NewInlineKeyboardButtonData("☑️ No", "cancel:"+action+":"+rest),
+				tgbotapi.NewInlineKeyboardButtonData("▶️ Start", "allow:"+action+":"+rest),
+				tgbotapi.NewInlineKeyboardButtonData("❌ Cancel", "cancel:"+action+":"+rest),
 			),
 		)
 		msg.ReplyMarkup = &keyboard

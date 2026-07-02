@@ -10,6 +10,7 @@ import (
 type containerAction struct {
 	action                   string
 	doneAction               string
+	resultIcon               string
 	shouldContainerBeStarted bool
 	actionPrefix             string
 	cancelActionPrefix       string
@@ -21,6 +22,7 @@ func (a *App) getAction(action string) containerAction {
 		"restart": {
 			action:                   "restart",
 			doneAction:               "restarted",
+			resultIcon:               "🔄",
 			shouldContainerBeStarted: true,
 			actionPrefix:             CallbackPrefixRestart,
 			cancelActionPrefix:       CallbackPrefixCancelRestart,
@@ -29,6 +31,7 @@ func (a *App) getAction(action string) containerAction {
 		"stop": {
 			action:                   "stop",
 			doneAction:               "stopped",
+			resultIcon:               "🔴",
 			shouldContainerBeStarted: true,
 			actionPrefix:             CallbackPrefixStop,
 			cancelActionPrefix:       CallbackPrefixCancelStop,
@@ -37,6 +40,7 @@ func (a *App) getAction(action string) containerAction {
 		"start": {
 			action:                   "start",
 			doneAction:               "started",
+			resultIcon:               "🟢",
 			shouldContainerBeStarted: false,
 			actionPrefix:             CallbackPrefixStart,
 			cancelActionPrefix:       CallbackPrefixCancelStart,
